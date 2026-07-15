@@ -24,6 +24,10 @@ Pick a video from your photo library, choose a compression level (or a quick pre
 
 Open `VideoCompressor.xcodeproj` in Xcode, select a run destination, and build (⌘B) / run (⌘R).
 
+## Privacy
+
+Video Compressor collects no data and makes no network requests — see the [Privacy Policy](PRIVACY.md).
+
 ## License
 
 Released under the [MIT License](LICENSE). Attribution isn't required, but a link back is appreciated.

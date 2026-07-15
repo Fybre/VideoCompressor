@@ -1057,6 +1057,10 @@ struct AboutView: View {
                         Link(destination: URL(string: "https://github.com/Fybre/VideoCompressor/blob/main/LICENSE")!) {
                             aboutRow(icon: "doc.text", title: "MIT License")
                         }
+                        Divider()
+                        Link(destination: URL(string: "https://github.com/Fybre/VideoCompressor/blob/main/PRIVACY.md")!) {
+                            aboutRow(icon: "hand.raised", title: "Privacy Policy")
+                        }
                     }
                     .padding(.horizontal, 12)
                     .background(Color(.secondarySystemBackground))
