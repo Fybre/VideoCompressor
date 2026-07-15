@@ -4,6 +4,7 @@ import AVFoundation
 import AVKit
 import UniformTypeIdentifiers
 import Photos
+import UIKit
 
 // MARK: - Enums
 enum ResolutionOption: String, CaseIterable, Identifiable {
@@ -121,6 +122,7 @@ struct ContentView: View {
     // old (cancelled/replaced) run can tell it's stale and avoid clobbering a
     // newer run's UI state.
     @State private var currentRunID: UUID?
+    @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
 
     private let minBitrate: Double = 800
     private let maxBitrate: Double = 6000
@@ -212,7 +214,8 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .padding(.top, 14)
+                .padding(.bottom, 8)
                 .background(.ultraThinMaterial)
             }
             .onAppear { loadSettings() }
@@ -237,17 +240,27 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var titleToolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            HStack(spacing: 6) {
-                Image(systemName: "film.stack.fill")
-                    .foregroundStyle(
-                        LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
-                Text("Video Compressor")
-                    .font(.system(.headline, design: .rounded, weight: .bold))
-                    .foregroundStyle(
-                        LinearGradient(colors: [.blue, .indigo], startPoint: .leading, endPoint: .trailing)
-                    )
+            Button(action: {
+                guard !isCompressing else { return }
+                resetUI()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "film.stack.fill")
+                        .foregroundStyle(
+                            LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .accessibilityHidden(true)
+                    Text("Video Compressor")
+                        .font(.system(.headline, design: .rounded, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(colors: [.blue, .indigo], startPoint: .leading, endPoint: .trailing)
+                        )
+                }
             }
+            .buttonStyle(.plain)
+            .disabled(isCompressing)
+            .accessibilityLabel("Video Compressor")
+            .accessibilityHint("Returns to the home screen")
         }
     }
 
@@ -257,11 +270,25 @@ struct ContentView: View {
             VideoPlayer(player: player)
                 .frame(height: 220)
                 .cornerRadius(12)
+                .overlay(alignment: .topTrailing) {
+                    if !isCompressing {
+                        Button(action: { showingVideoPicker = true }) {
+                            Label("Change", systemImage: "arrow.triangle.2.circlepath")
+                                .font(.caption.weight(.medium))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.ultraThinMaterial, in: Capsule())
+                        }
+                        .padding(8)
+                        .accessibilityLabel("Change video")
+                    }
+                }
         } else {
             Button(action: { showingVideoPicker = true }) {
                 VStack {
                     Image(systemName: "video.badge.plus")
                         .font(.system(size: 60))
+                        .accessibilityHidden(true)
                     Text("Select Video")
                         .font(.headline)
                 }
@@ -284,6 +311,7 @@ struct ContentView: View {
                     Text("Resolution: \(Int(originalSize.width)) × \(Int(originalSize.height))")
                 }
             }
+            .accessibilityElement(children: .combine)
             Spacer()
             if estimatedOutputSize > 0 {
                 VStack(alignment: .trailing, spacing: 4) {
@@ -294,6 +322,7 @@ struct ContentView: View {
                         .font(.headline)
                         .foregroundColor(.blue)
                 }
+                .accessibilityElement(children: .combine)
             }
         }
         .font(.subheadline)
@@ -320,6 +349,7 @@ struct ContentView: View {
                                 .foregroundColor(selectedPreset == preset ? .white : .primary)
                                 .cornerRadius(20)
                         }
+                        .accessibilityAddTraits(selectedPreset == preset ? .isSelected : [])
                     }
                 }
                 .padding(.horizontal)
@@ -336,6 +366,8 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
 
             Slider(value: $compressionLevel, in: 0...1, step: 0.01)
+                .accessibilityLabel("Compression Level")
+                .accessibilityValue("\(Int(compressionLevel * 100)) percent, target bitrate \(Int(targetBitrate)) kilobits per second")
                 .onChange(of: compressionLevel) { _ in
                     // onChange fires for programmatic writes too (e.g. applyPreset
                     // setting compressionLevel), not just user drags — don't clear
@@ -380,6 +412,8 @@ struct ContentView: View {
                     Text("Frame Rate: \(Int(targetFrameRate)) fps")
                         .font(.subheadline).foregroundColor(.secondary)
                     Slider(value: $targetFrameRate, in: 15...60, step: 1)
+                        .accessibilityLabel("Frame Rate")
+                        .accessibilityValue("\(Int(targetFrameRate)) frames per second")
                         .onChange(of: targetFrameRate) { _ in saveSettings() }
                 }
             }
@@ -397,6 +431,7 @@ struct ContentView: View {
         Button(action: compressVideo) {
             HStack {
                 Image(systemName: "arrow.down.circle.fill")
+                    .accessibilityHidden(true)
                 Text("Compress Video")
             }
             .frame(maxWidth: .infinity)
@@ -412,8 +447,11 @@ struct ContentView: View {
     private var compressingSection: some View {
         VStack(spacing: 8) {
             ProgressView(value: compressionProgress)
+                .accessibilityLabel("Compressing")
+                .accessibilityValue("\(Int(compressionProgress * 100)) percent")
             Text("Compressing... \(Int(compressionProgress * 100))%")
                 .font(.caption)
+                .accessibilityHidden(true)
             Button("Cancel", role: .destructive) { cancelCompression() }
                 .font(.footnote)
                 .padding(.top, 4)
@@ -531,6 +569,22 @@ struct ContentView: View {
     }
 
     private func loadVideo(url: URL) {
+        // Switching to a different video (via the "Change" button) shouldn't
+        // leave the previous pick's temp file, or its compressed result and
+        // related state, lying around.
+        if let previousURL = selectedVideoURL, previousURL != url {
+            try? FileManager.default.removeItem(at: previousURL)
+        }
+        if let oldCompressedURL = compressedVideoURL {
+            try? FileManager.default.removeItem(at: oldCompressedURL)
+        }
+        compressedVideoURL = nil
+        compressedFileSize = 0
+        previewItem = nil
+        didSaveToPhotos = false
+        errorMessage = nil
+        saveSuccessMessage = nil
+
         selectedVideoURL = url
         player = AVPlayer(url: url)
         selectedPreset = nil
@@ -607,6 +661,8 @@ struct ContentView: View {
         errorMessage = nil
         saveSuccessMessage = nil
 
+        beginBackgroundTask()
+
         compressWithReaderWriter(
             inputURL: inputURL,
             runID: runID,
@@ -615,6 +671,25 @@ struct ContentView: View {
             codec: selectedCodec,
             frameRate: targetFrameRate
         )
+    }
+
+    // Compressing a large video can take longer than the ~30s iOS gives an app
+    // once backgrounded; without a background task, switching apps mid-compress
+    // gets the process suspended and the run left incomplete. This buys extra
+    // time to keep writing, and cancels gracefully if that time runs out.
+    private func beginBackgroundTask() {
+        endBackgroundTask()
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "VideoCompression") {
+            DispatchQueue.main.async {
+                cancelCompression()
+            }
+        }
+    }
+
+    private func endBackgroundTask() {
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
     }
 
     private func compressWithReaderWriter(
@@ -636,6 +711,7 @@ struct ContentView: View {
                         if currentRunID == runID {
                             errorMessage = "No video track found"
                             isCompressing = false
+                            endBackgroundTask()
                         }
                     }
                     return
@@ -704,6 +780,7 @@ struct ContentView: View {
                         if currentRunID == runID {
                             errorMessage = "Failed to configure video reader"
                             isCompressing = false
+                            endBackgroundTask()
                         }
                     }
                     return
@@ -754,6 +831,7 @@ struct ContentView: View {
                         if currentRunID == runID {
                             errorMessage = "Failed to configure video writer"
                             isCompressing = false
+                            endBackgroundTask()
                         }
                     }
                     try? FileManager.default.removeItem(at: outputURL)
@@ -776,6 +854,7 @@ struct ContentView: View {
                         if currentRunID == runID {
                             errorMessage = reader.error?.localizedDescription ?? "Failed to start reading"
                             isCompressing = false
+                            endBackgroundTask()
                         }
                     }
                     try? FileManager.default.removeItem(at: outputURL)
@@ -786,6 +865,7 @@ struct ContentView: View {
                         if currentRunID == runID {
                             errorMessage = writer.error?.localizedDescription ?? "Failed to start writing"
                             isCompressing = false
+                            endBackgroundTask()
                         }
                     }
                     try? FileManager.default.removeItem(at: outputURL)
@@ -890,6 +970,7 @@ struct ContentView: View {
                             activeAssetReader = nil
                             activeAssetWriter = nil
                             activeOutputURL = nil
+                            endBackgroundTask()
                         }
                         return
                     }
@@ -901,6 +982,7 @@ struct ContentView: View {
                             activeAssetReader = nil
                             activeAssetWriter = nil
                             activeOutputURL = nil
+                            endBackgroundTask()
                             if writer.status == .completed {
                                 compressedVideoURL = outputURL
                                 if let attrs = try? FileManager.default.attributesOfItem(atPath: outputURL.path) {
@@ -921,6 +1003,7 @@ struct ContentView: View {
                     if currentRunID == runID {
                         errorMessage = error.localizedDescription
                         isCompressing = false
+                        endBackgroundTask()
                     }
                 }
             }
@@ -977,6 +1060,7 @@ struct ContentView: View {
         activeAssetWriter = nil
         activeOutputURL = nil
         currentRunID = nil
+        endBackgroundTask()
         errorMessage = nil
         saveSuccessMessage = nil
         didSaveToPhotos = false
@@ -1011,6 +1095,7 @@ struct ContentView: View {
         currentRunID = nil
         isCompressing = false
         compressionProgress = 0
+        endBackgroundTask()
     }
 
     private func formatBytes(_ bytes: Int64) -> String {
@@ -1034,6 +1119,7 @@ struct AboutView: View {
                         .scaledToFit()
                         .frame(width: 72, height: 72)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .accessibilityHidden(true)
 
                     VStack(spacing: 4) {
                         Text("Video Compressor")

@@ -10,14 +10,17 @@ Pick a video from your photo library, choose a compression level (or a quick pre
 - **Quick presets** — Balanced, Social Media, Archive, High Quality, Original
 - **Advanced options** — resolution, codec (H.264/HEVC), and frame rate, with sensible guardrails so a setting can never produce a file *larger* than the source
 - **Cancel anytime** — mid-compression cancellation with immediate UI feedback
+- **Switch videos freely** — change your selection before compressing, or jump back to the home screen at any point (when not actively compressing)
 - **Preview, save, and share** — review the compressed result, save it to Photos, or share it directly
 - **Settings persist** — your last-used compression settings are remembered between videos and app launches
+- **Keeps working in the background** — compression continues briefly if you switch apps mid-run, rather than being killed immediately
+- **Accessible** — VoiceOver labels throughout, including live compression progress and selection state
 - **All local** — video processing happens entirely on-device
 
 ## Requirements
 
 - Xcode 16+
-- iOS 17+
+- iOS 26+
 - Swift 5
 
 ## Building
