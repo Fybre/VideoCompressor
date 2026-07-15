@@ -432,10 +432,12 @@ struct ContentView: View {
 
             actionsCard(compressedURL: compressedURL)
 
-            Button("Compress Another Video") { resetUI() }
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .padding(.top, 4)
+            Button(action: { resetUI() }) {
+                Label("Compress Another Video", systemImage: "chevron.backward")
+                    .font(.footnote.weight(.medium))
+            }
+            .foregroundColor(.accentColor)
+            .padding(.top, 4)
         }
         .padding(.horizontal)
     }
@@ -709,6 +711,7 @@ struct ContentView: View {
                 reader.add(videoCompositionOutput)
 
                 var audioOutput: AVAssetReaderTrackOutput?
+                var audioFormatHint: CMFormatDescription?
                 let audioTracks = try await asset.loadTracks(withMediaType: .audio)
                 if let audioTrack = audioTracks.first {
                     let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
@@ -716,6 +719,11 @@ struct ContentView: View {
                     if reader.canAdd(output) {
                         reader.add(output)
                         audioOutput = output
+                        // A passthrough (nil outputSettings) writer input needs a format
+                        // hint to initialize the audio track properly in the MP4 container —
+                        // without it, append() can silently fail and the output ends up
+                        // with no audio at all.
+                        audioFormatHint = try await audioTrack.load(.formatDescriptions).first
                     }
                 }
 
@@ -755,7 +763,7 @@ struct ContentView: View {
 
                 var audioInput: AVAssetWriterInput?
                 if audioOutput != nil {
-                    let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil)
+                    let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: audioFormatHint)
                     input.expectsMediaDataInRealTime = false
                     if writer.canAdd(input) {
                         writer.add(input)
