@@ -109,6 +109,7 @@ struct ContentView: View {
     @State private var showingVideoPicker = false
     @State private var errorMessage: String?
     @State private var showingShareSheet = false
+    @State private var showingAbout = false
     @State private var previewItem: PreviewItem?
     @State private var saveSuccessMessage: String?
     @State private var didSaveToPhotos = false
@@ -204,6 +205,16 @@ struct ContentView: View {
                 }
                 .padding()
             }
+            .safeAreaInset(edge: .bottom) {
+                Button(action: { showingAbout = true }) {
+                    Text("About")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+            }
             .onAppear { loadSettings() }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -213,6 +224,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingShareSheet) {
                 if let url = compressedVideoURL { ShareSheet(activityItems: [url]) }
+            }
+            .sheet(isPresented: $showingAbout) {
+                AboutView()
             }
             .fullScreenCover(item: $previewItem) { item in
                 FullScreenVideoPlayer(player: item.player) { previewItem = nil }
@@ -1000,6 +1014,74 @@ struct ContentView: View {
 }
 
 // MARK: - Supporting Views
+struct AboutView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    Image("FybreLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                    VStack(spacing: 4) {
+                        Text("Video Compressor")
+                            .font(.title2.bold())
+                        Text("Compress videos on your device with control over resolution, codec, and bitrate. All processing happens locally — nothing is uploaded.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal)
+
+                    VStack(spacing: 0) {
+                        Link(destination: URL(string: "https://github.com/Fybre/VideoCompressor")!) {
+                            aboutRow(icon: "chevron.left.forwardslash.chevron.right", title: "View Source on GitHub")
+                        }
+                        Divider()
+                        Link(destination: URL(string: "https://fybre.me")!) {
+                            aboutRow(icon: "globe", title: "fybre.me")
+                        }
+                        Divider()
+                        Link(destination: URL(string: "https://github.com/Fybre/VideoCompressor/blob/main/LICENSE")!) {
+                            aboutRow(icon: "doc.text", title: "MIT License")
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(10)
+                    .padding(.horizontal)
+
+                    Text("Released under the MIT License. Attribution isn't required, but a link back is appreciated.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("About")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func aboutRow(icon: String, title: String) -> some View {
+        Label(title, systemImage: icon)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .foregroundColor(.primary)
+    }
+}
+
 struct FullScreenVideoPlayer: View {
     let player: AVPlayer
     let onDismiss: () -> Void
